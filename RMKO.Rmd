@@ -4,6 +4,8 @@ output:
   html_document: default
 ---
 ```{r}
+# Muhamad Aqsal Zulhaj Adha
+# 222413664/2KS3
 # Memuat library yang dibutuhkan
 library(readxl)
 library(urca)
