@@ -1,0 +1,104 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+# Memuat library yang dibutuhkan
+library(readxl)
+library(urca)
+library(forecast)
+library(lmtest)
+library(nortsTest)
+library(rugarch)
+
+# 1. PERSIAPAN DATA & PLOT RETURN
+RMKO <- read_excel("D:/POLSTAT STIS/TINGKAT II/Sem 4/ARW/Data Historis RMKO.xlsx")
+rmko = data.frame(RMKO)
+
+rmko$Tanggal <- as.Date(rmko$Tanggal) 
+rmko <- rmko[order(rmko$Tanggal), ]
+
+# Mengambil kolom harga dan menghitung return
+harga = rmko$Terakhir
+ret = diff(log(harga)) * 100
+ret = na.omit(ret)
+
+# VISUAL 1: Plot Return Harian (Untuk melihat Volatility Clustering)
+plot(ret, type="l", col="black", 
+     main="Return Harian Saham RMKO (Volatility Clustering)", 
+     ylab="Return (%)", xlab="Waktu")
+abline(h=0, col="red", lty=2)
+
+# 2. UJI STASIONERITAS & PEMILIHAN MODEL ARIMA
+adf_ret = ur.df(ret, type="none", lags=2)
+print(summary(adf_ret))
+
+best_model = auto.arima(ret, trace=TRUE)
+print(best_model)
+
+# Ekstrak orde untuk mean.model GARCH
+p_order = arimaorder(best_model)[1]
+q_order = arimaorder(best_model)[3]
+res_ret = resid(best_model)
+
+# 3. UJI EFEK ARCH
+uji_arch = arch.test(res_ret)
+print(uji_arch)
+p_value_arch = uji_arch$p.value
+
+# 4. PEMODELAN GARCH & VISUALISASI
+if (p_value_arch < 0.05) {
+  # --- Estimasi Model (Menggunakan orde p dan q dinamis) ---
+  spec.arch1 = ugarchspec(variance.model=list(model="sGARCH", garchOrder=c(1,0)), 
+                          mean.model=list(armaOrder=c(p_order, q_order), include.mean=TRUE))
+  fit.arch1 = ugarchfit(spec.arch1, data=ret)
+  
+  spec.garch11 = ugarchspec(variance.model=list(model="sGARCH", garchOrder=c(1,1)), 
+                            mean.model=list(armaOrder=c(p_order, q_order), include.mean=TRUE))
+  fit.garch11 = ugarchfit(spec.garch11, data=ret)
+  
+  spec.egarch11 = ugarchspec(variance.model=list(model="eGARCH", garchOrder=c(1,1)),  
+                             mean.model=list(armaOrder=c(p_order, q_order), include.mean=TRUE),
+                             distribution.model="norm")
+  fit.egarch11 = ugarchfit(spec=spec.egarch11, data=ret, solver="hybrid")
+  
+  spec.tgarch11 = ugarchspec(variance.model=list(model="gjrGARCH", garchOrder=c(1,1)), 
+                             mean.model=list(armaOrder=c(p_order, q_order), include.mean=TRUE),
+                             distribution.model="norm")
+  fit.tgarch11 = ugarchfit(spec.tgarch11, data=ret)
+  
+  # --- Perbandingan AIC ---
+  cat("========== PERBANDINGAN AIC ==========\n")
+  cat("ARCH(1)     : AIC =", infocriteria(fit.arch1)[1,1], "\n")
+  cat("GARCH(1,1)  : AIC =", infocriteria(fit.garch11)[1,1], "\n")
+  cat("EGARCH(1,1) : AIC =", infocriteria(fit.egarch11)[1,1], "\n")
+  cat("TGARCH(1,1) : AIC =", infocriteria(fit.tgarch11)[1,1], "\n")
+  
+  # 5. VISUALISASI VOLATILITAS & FORECASTING (Untuk Model Terbaik)
+  # Karena EGARCH(1,1) memiliki AIC terkecil pada RMKO, kita gunakan fit.egarch11
+  
+  # VISUAL 2: Plot Fitted Volatility
+  kondisional_volatilitas = sigma(fit.egarch11)
+  plot(kondisional_volatilitas, type="l", col="blue", 
+       main="Fitted Volatility EGARCH(1,1) Saham RMKO", 
+       ylab="Volatilitas (Standar Deviasi)", xlab="Waktu")
+  
+  # Melakukan Peramalan (Forecasting) 10 Hari ke Depan
+  fcy_egarch = ugarchforecast(fit.egarch11, n.ahead=10)
+  print(fcy_egarch)
+  
+  f_sigma = sigma(fcy_egarch)
+  f_var = f_sigma^2
+  print(f_var)
+  
+  # VISUAL 3: Plot Peramalan Volatilitas (Sigma Forecast)
+  plot(fcy_egarch, which = 3) 
+} else {
+  
+  fcy_arima = forecast(best_model, h=10)
+  print(fcy_arima)
+  plot(fcy_arima, main="Forecast Return (ARIMA Terbaik)", ylab="Return (%)")
+}
+```
+
