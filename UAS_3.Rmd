@@ -1,0 +1,63 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+# Muhamad Aqsal Zulhaj Adha
+# 222413664 / 2KS3
+
+# 1. LOAD LIBRARY
+library(readxl)
+library(urca)
+library(lmtest)
+
+# 2. PERSIAPAN DATA
+data <- read_excel("D:/POLSTAT STIS/TINGKAT II/Sem 4/ARW/Data No 3.xlsx")
+
+colnames(data)[3] <- "Konsumsi"
+colnames(data)[4] <- "PDB"
+
+ts_konsumsi <- ts(data$Konsumsi, start = c(2010, 1), frequency = 4)
+ts_pdb <- ts(data$PDB, start = c(2010, 1), frequency = 4)
+
+plot(cbind(ts_konsumsi, ts_pdb), main="Tren Konsumsi RT dan PDB Indonesia")
+
+# 3. UJI STASIONERITAS
+# Data asli
+summary(ur.df(ts_konsumsi, type = "none", lags = 1))
+summary(ur.df(ts_pdb, type = "none", lags = 1))
+
+# First Differencing
+dkonsumsi <- diff(ts_konsumsi)
+dpdb <- diff(ts_pdb)
+
+summary(ur.df(dkonsumsi, type = "none", lags = 1))
+summary(ur.df(dpdb, type = "none", lags = 1))
+
+# 4. REGRESI JANGKA PANJANG & UJI KOINTEGRASI (ENGLE-GRANGER)
+model_jp <- lm(ts_konsumsi ~ ts_pdb)
+print(summary(model_jp))
+
+resid_jp <- residuals(model_jp)
+
+# Uji stasioneritas pada residual
+uji_kointegrasi <- ur.df(resid_jp, type = "none", lags = 1)
+print(summary(uji_kointegrasi))
+
+# 5. ESTIMASI ERROR CORRECTION MODEL (ECM)
+ect_1 <- resid_jp[1:(length(resid_jp) - 1)]
+
+# Regresi ECM
+model_ecm <- lm(dkonsumsi ~ dpdb + ect_1)
+print(summary(model_ecm))
+
+# 6. UJI DIAGNOSTIK RESIDUAL ECM (ASUMSI KLASIK)
+
+# A. Uji Autokorelasi (Breusch-Godfrey Test)
+print(bgtest(model_ecm))
+
+# B. Uji Heteroskedastisitas (Breusch-Pagan Test)
+print(bptest(model_ecm))
+```
+
